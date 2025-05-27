@@ -2,6 +2,13 @@ from machine import Pin, SPI
 import framebuf
 import time
 
+
+class EnhancedFrameBuffer(framebuf.FrameBuffer):
+    def __init__(self, buffer, width, height, format):
+        super().__init__(buffer, width, height, format)
+        self.width = width
+        self.height = height
+
 class EPD_1in54:
     def __init__(self, spi, cs, dc, rst, busy):
         self.width = 200
@@ -14,8 +21,13 @@ class EPD_1in54:
         self.spi = spi
 
         self.buffer = bytearray(self.width * self.height // 8)
-        self.fb = framebuf.FrameBuffer(self.buffer, self.width, self.height, framebuf.MONO_HLSB)
+        self.fb = EnhancedFrameBuffer(self.buffer, self.width, self.height, framebuf.MONO_HLSB)
 
+        # Orientation settings
+        self.flip_horizontal = False
+        self.flip_vertical = False
+        self.rotation = 0  # Can be 0, 90, 180, 270
+        
         self.init()
 
     def reset(self):
@@ -80,9 +92,50 @@ class EPD_1in54:
             self.buffer[i] = color
         self.show()
 
+    def set_rotation(self, angle):
+        assert angle in (0, 90, 180, 270)
+        self.rotation = angle
+
+    def set_flip(self, horizontal=False, vertical=False):
+        self.flip_horizontal = horizontal
+        self.flip_vertical = vertical
+
     def show(self):
+        transformed = bytearray(len(self.buffer))
+
+        for y in range(self.height):
+            for x in range(self.width):
+                # Source bit
+                src_index = x // 8 + y * (self.width // 8)
+                src_bit = 7 - (x % 8)
+                pixel = (self.buffer[src_index] >> src_bit) & 0x01
+
+                # Apply flipping
+                tx, ty = x, y
+                if self.flip_horizontal:
+                    tx = self.width - 1 - tx
+                if self.flip_vertical:
+                    ty = self.height - 1 - ty
+
+                # Apply rotation
+                if self.rotation == 90:
+                    tx, ty = ty, self.width - 1 - tx
+                elif self.rotation == 180:
+                    tx, ty = self.width - 1 - tx, self.height - 1 - ty
+                elif self.rotation == 270:
+                    tx, ty = self.height - 1 - ty, tx
+
+                # Target bit
+                dst_index = tx // 8 + ty * (self.width // 8)
+                dst_bit = 7 - (tx % 8)
+
+                if pixel:
+                    transformed[dst_index] |= (1 << dst_bit)
+                else:
+                    transformed[dst_index] &= ~(1 << dst_bit)
+
         self.send_cmd(0x24)
-        self.send_data(self.buffer)
+        self.send_data(transformed)
 
         self.send_cmd(0x22)
         self.send_data(0xF7)
@@ -109,3 +162,4 @@ class EPD_1in54:
     def draw_image(self, img_buf):
         # img_buf must be same size: 200x200 / 8 bytes
         self.buffer[:] = img_buf
+
