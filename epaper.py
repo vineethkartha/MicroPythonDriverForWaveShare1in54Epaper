@@ -1,10 +1,8 @@
 from machine import SPI, Pin
 from epaper1in54 import EPD_1in54
-from writer import Writer
-import freesans20  # Make sure this .py font file is on your Pico
 import time
 
-# Pin config
+# --- Pin Configuration ---
 SCK = 6
 MOSI = 7
 CS = 5
@@ -12,22 +10,28 @@ DC = 8
 RST = 9
 BUSY = 10
 
-# SPI and Display Setup
-spi = SPI(0, baudrate=2000000, polarity=0, phase=0, sck=Pin(SCK), mosi=Pin(MOSI))
+# --- Initialize SPI ---
+spi = SPI(0, baudrate=2000000, polarity=0, phase=0,
+          sck=Pin(SCK), mosi=Pin(MOSI))
+
+# --- Initialize e-Paper display ---
 epd = EPD_1in54(spi, cs=CS, dc=DC, rst=RST, busy=BUSY)
 
-# Optional: Fix mirroring or rotation
+# --- Setup ---
 epd.set_flip(horizontal=True)
-epd.set_rotation(0)  # Or 90, 180, 270
+epd.set_rotation(0)
 
-# Clear and draw text with larger font
+# --- Initial Draw and Full Refresh ---
 epd.clear()
+epd.draw_text(10, 10, "Hello, world!", color=0)
+epd.show(partial=False)  # Full refresh
+time.sleep(3)
 
-# Create Writer instance with the enhanced framebuffer
-wri = Writer(epd.fb, freesans20)
-wri.set_textpos(10, 10)  # (row, column)
-wri.printstring("Hello, world!")
+# --- Partial Update ---
+epd.draw_text(10, 30, "Partial update!", color=0)
+epd.show(partial=True)  # Only update the changed region
 
-epd.show()
+# --- Final Sleep ---
+time.sleep(5)
 epd.sleep()
 
